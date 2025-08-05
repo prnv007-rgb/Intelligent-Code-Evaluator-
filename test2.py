@@ -4,9 +4,9 @@ import ast
 import re
 import json
 import requests
-import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from scipy.spatial.distance import cdist # Import cdist for similarity search
 
 st.set_page_config(page_title="Code Quality Evaluator + RAG", layout="wide")
 
@@ -14,6 +14,7 @@ st.set_page_config(page_title="Code Quality Evaluator + RAG", layout="wide")
 PISTON_API = "https://emkc.org/api/v2/piston/execute"
 
 def evaluate_with_piston(source_code: str, stdin: str = "") -> dict:
+    """Sends code to the Piston API for execution."""
     payload = {
         "language": "python3",
         "version": "3.10.0",
@@ -28,6 +29,7 @@ def evaluate_with_piston(source_code: str, stdin: str = "") -> dict:
     return res.json()
 
 def run_user_function(user_code: str, input_line: str) -> str:
+    """Parses user code, prepares arguments, and executes it via Piston API."""
     try:
         tree = ast.parse(user_code)
         fn_node = next((n for n in tree.body if isinstance(n, ast.FunctionDef)), None)
@@ -38,11 +40,12 @@ def run_user_function(user_code: str, input_line: str) -> str:
     except Exception:
         return "❌ Error parsing function definition."
 
-    # Prepare arguments
+    # Prepare arguments from the input string
     if "Input:" in input_line:
         input_line = input_line.split("Input:", 1)[1].strip()
     parts = re.split(r",\s*(?![^\[\](){}]*[\]\)\}])", input_line)
 
+    # Handle keyword arguments vs. positional arguments
     if any("=" in part for part in parts):
         args_dict = {}
         for part in parts:
@@ -67,7 +70,7 @@ def run_user_function(user_code: str, input_line: str) -> str:
                 return f"❌ Could not parse positional value '{part}'"
         call_str = f"{fn_name}({', '.join(repr(v) for v in vals)})"
 
-    # Build wrapper without extra indentation
+    # Build a wrapper script to execute the function and capture output
     wrapper = user_code.strip() + "\n"
     wrapper += f"try:\n    result = {call_str}\n    print(result)\n"
     wrapper += "except Exception as e:\n    print('RUNTIME_ERROR:', e)\n"
@@ -85,35 +88,33 @@ def run_user_function(user_code: str, input_line: str) -> str:
         return f"❌ Runtime Exception: {stdout.split('RUNTIME_ERROR:')[1].strip()}"
     return stdout.strip() or "⚠️ No output returned."
 
-# --- RAG resources loader ---
+# --- RAG resources loader (Now using SciPy/NumPy, no FAISS) ---
 @st.cache_resource(ttl=3600)
 def load_rag_resources():
+    """Loads the model and problem data, and pre-computes embeddings."""
     model = SentenceTransformer("all-MiniLM-L6-v2")
-    index = faiss.read_index("rag_minilm_index.faiss")
     with open("rag_minilm_problems.json", "r", encoding="utf-8") as f:
         problems = json.load(f)
-    return model, index, problems
+    # Pre-compute the embeddings for all problem titles for faster search
+    problem_embeddings = model.encode([p['title'] for p in problems])
+    return model, problems, problem_embeddings
 
-# Complexity mapping helper
+# --- Helper functions for RAG ---
 def complexity_rank(comp: str) -> int:
-    if "n^3" in comp:
-        return 3
-    if "n^2" in comp:
-        return 2
-    if "n" in comp:
-        return 1
+    """Assigns a numerical rank to complexity strings for comparison."""
+    if "n^3" in comp: return 3
+    if "n^2" in comp: return 2
+    if "n" in comp: return 1
     return 0
 
-
 def detect_complexity(user_code: str) -> str:
+    """Analyzes code with AST to find the maximum loop nesting depth."""
     class LoopDepth(ast.NodeVisitor):
         def __init__(self):
             self.max_depth = 0
             self.current = 0
-        def visit_For(self, node):
-            self._enter_loop(node)
-        def visit_While(self, node):
-            self._enter_loop(node)
+        def visit_For(self, node): self._enter_loop(node)
+        def visit_While(self, node): self._enter_loop(node)
         def _enter_loop(self, node):
             self.current += 1
             self.max_depth = max(self.max_depth, self.current)
@@ -123,20 +124,24 @@ def detect_complexity(user_code: str) -> str:
         tree = ast.parse(user_code)
         ld = LoopDepth()
         ld.visit(tree)
-        if ld.max_depth >= 3:
-            return 'O(n^3)'
-        if ld.max_depth == 2:
-            return 'O(n^2)'
+        if ld.max_depth >= 3: return 'O(n^3)'
+        if ld.max_depth == 2: return 'O(n^2)'
         return 'O(n)'
     except Exception:
         return 'Unknown'
 
-
 def rag_answer(query: str, user_code: str = ""):
-    model, index, problems = load_rag_resources()
-    vec = model.encode([query], convert_to_numpy=True)
-    _, I = index.search(vec, 5)
-    retrieved = [problems[i] for i in I[0]]
+    """Finds similar problems using SciPy and suggests improvements."""
+    model, problems, problem_embeddings = load_rag_resources()
+    query_vec = model.encode([query])
+
+    # --- SciPy-based similarity search ---
+    # Calculate cosine distance between the query and all problem titles
+    distances = cdist(query_vec, problem_embeddings, "cosine")[0]
+    # Get the indices of the 5 problems with the smallest distance
+    top_indices = np.argsort(distances)[:5]
+    retrieved = [problems[i] for i in top_indices]
+    # --- End of SciPy search ---
 
     user_comp = detect_complexity(user_code)
     st.write(" Detected Complexity:", user_comp)
@@ -150,26 +155,26 @@ def rag_answer(query: str, user_code: str = ""):
             approach = best.get('approach', '')
             suggestion = (
                 f" Your solution is suboptimal. Recommended approach: {approach}\n"
-                f"Here's optimal code ({opt_comp}):\n```python\n{opt_code}\n```"
+                f"Here's an optimal code snippet ({opt_comp}):\n```python\n{opt_code}\n```"
             )
-    st.write(" Similar Problems:")
+            
+    st.write(" Similar Problems Found:")
     for p in retrieved:
         st.markdown(f"- {p['title']}")
     return {'suggestion': suggestion}
 
-
+# --- Main Streamlit App UI ---
 def main():
     st.title("Code Quality Evaluator + RAG Assistant")
     if "test_cases" not in st.session_state:
         st.session_state.test_cases = [{"input": "", "expected": ""}]
-
-  
+ 
     if st.button(" Add Test Case"):
         st.session_state.test_cases.append({"input": "", "expected": ""})
 
     with st.form("eval_form"):
         st.subheader(" Problem Statement")
-        problem = st.text_area("", height=150)
+        problem = st.text_area("Describe the problem you are trying to solve.", height=150)
 
         c1, c2 = st.columns(2)
         with c1:
@@ -181,7 +186,7 @@ def main():
             for i, tc in enumerate(st.session_state.test_cases):
                 st.markdown(f"**Test Case {i+1}**")
                 inp = st.text_area(f"Input {i}", tc["input"], key=f"in{i}")
-                exp = st.text_area(f"Expected {i}", tc["expected"], key="ex{i}")
+                exp = st.text_area(f"Expected {i}", tc["expected"], key=f"ex{i}")
                 updated.append({"input": inp, "expected": exp})
             st.session_state.test_cases = updated
 
@@ -190,26 +195,31 @@ def main():
     if submit and problem.strip():
         st.markdown("---")
         st.subheader(" Test Case Results")
+        all_passed = True
         for i, tc in enumerate(st.session_state.test_cases):
             st.markdown(f"**Test Case {i+1}**")
             output = run_user_function(code, tc["input"])
             st.text(f"🔧 Output: {output}")
             if output.startswith("❌"):
                 st.error("Execution error; skipping suggestions.")
+                all_passed = False
             elif tc.get("expected"):
                 try:
                     if ast.literal_eval(output.strip()) == ast.literal_eval(tc["expected"].strip()):
                         st.success(" Passed")
                     else:
-                        st.error(f"❌ Expected: {tc['expected']}")
+                        st.error(f"❌ Failed. Expected: {tc['expected']}")
+                        all_passed = False
                 except:
                     st.error("❌ Invalid output or expected format.")
-
-        with st.spinner(" Generating RAG suggestions..."):
-            rag_out = rag_answer(problem, code)
-
-        st.subheader("Suggested Improvement Based on RAG")
-        st.markdown(rag_out['suggestion'])
+                    all_passed = False
+        
+        # Only run RAG if the code is valid and test cases passed
+        if all_passed:
+            with st.spinner(" Generating RAG suggestions..."):
+                rag_out = rag_answer(problem, code)
+            st.subheader("Suggested Improvement Based on RAG")
+            st.markdown(rag_out['suggestion'])
 
 if __name__ == "__main__":
     main()
