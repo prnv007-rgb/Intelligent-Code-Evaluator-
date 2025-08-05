@@ -3,3 +3,4 @@ streamlit-ace
 requests
 numpy
 sentence-transformers
+faiss-cpu==1.7.4
