@@ -13,7 +13,7 @@ from collections import Counter
 
 st.set_page_config(page_title="Code Quality Evaluator + RAG", layout="wide")
 
-# --- Judge0 API configuration ---
+
 JUDGE0_API = "https://judge0-ce.p.rapidapi.com/submissions"
 JUDGE0_HEADERS = {
     "x-rapidapi-host": "judge0-ce.p.rapidapi.com",
@@ -49,7 +49,7 @@ def run_user_function(user_code: str, input_line: str) -> str:
 
     match = re.search(r"def\s+(\w+)\s*\(([^)]*)\)", user_code)
     if not match:
-        return "❌ Could not find function definition."
+        return " Could not find function definition."
     fn_name = match.group(1)
     params = [p.strip() for p in match.group(2).split(',') if p.strip()]
 
@@ -99,9 +99,9 @@ except Exception as e:
         return f"❌ Runtime Error: {stderr}"
     return stdout.strip() or "⚠️ No output returned."
 
-# Lazy-load RAG resources
+
 def load_rag_resources():
-    # cached after first call
+
     return _load_rag_resources()
 
 @st.cache_resource
@@ -112,7 +112,7 @@ def _load_rag_resources():
         problems = json.load(f)
     return model, index, problems
 
-# RAG answer only suggests for brute force
+
 def rag_answer(query: str, user_code: str = ""):
     model, index, problems = load_rag_resources()
     vec = model.encode([query], convert_to_numpy=True)
@@ -124,7 +124,7 @@ def rag_answer(query: str, user_code: str = ""):
 
     st.write("🔎 Detected Approach:", dominant)
 
-    # Only suggest improvements if brute force detected
+
     suggestion = ''
     if dominant.lower() in ['brute force', 'brute']:
         suggestion = (
@@ -134,20 +134,19 @@ def rag_answer(query: str, user_code: str = ""):
     else:
         suggestion = "✅ Your solution appears optimal; no improvement needed."
 
-    # List similar problem titles only
+ 
     titles = [p['title'] for p in retrieved]
 
     return {'retrieved_titles': titles, 'approach': dominant, 'suggestion': suggestion}
 
-# Streamlit UI
 
 def main():
     if "test_cases" not in st.session_state:
         st.session_state.test_cases = [{"input": "", "expected": ""}]
-    if st.button("➕ Add Test Case"):
+    if st.button(" Add Test Case"):
         st.session_state.test_cases.append({"input": "", "expected": ""})
 
-    st.title("💡 Code Quality Evaluator + RAG Assistant")
+    st.title(" Code Quality Evaluator + RAG Assistant")
     with st.form("eval_form"):
         st.subheader("📘 Problem Statement")
         problem = st.text_area("", height=150)
@@ -156,7 +155,7 @@ def main():
             st.subheader("🧠 Your Python Code")
             code = st_ace(language="python", theme="github", height=300, key="ace")
         with c2:
-            st.subheader("🧪 Test Cases")
+            st.subheader(" Test Cases")
             updated = []
             for i, tc in enumerate(st.session_state.test_cases):
                 st.markdown(f"**Test Case {i+1}**")
@@ -178,18 +177,18 @@ def main():
             elif tc.get("expected"):
                 try:
                     if ast.literal_eval(output.strip()) == ast.literal_eval(tc["expected"].strip()):
-                        st.success("✅ Passed")
+                        st.success("✅Passed")
                     else:
-                        st.error(f"❌ Expected: {tc['expected']}")
+                        st.error(f" Expected: {tc['expected']}")
                 except Exception:
-                    st.error("❌ Invalid output or expected format.")
+                    st.error(" Invalid output or expected format.")
 
-        with st.spinner("🔍 Generating RAG suggestions..."):
+        with st.spinner(" Generating RAG suggestions..."):
             rag_out = rag_answer(problem, code)
 
-        st.subheader("🛠️ Suggested Improvement Based on RAG")
+        st.subheader(" Suggested Improvement Based on RAG")
         st.markdown(rag_out['suggestion'])
-        st.subheader("🧹 Similar Problems")
+        st.subheader(" Similar Problems")
         for title in rag_out['retrieved_titles']:
             st.markdown(f"- {title}")
 
