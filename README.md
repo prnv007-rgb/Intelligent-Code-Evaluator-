@@ -1,4 +1,5 @@
-Intelligent Code Evaluation Platform
+#  Intelligent Code Evaluation Platform
+
 Overview
 This project is an advanced code evaluation platform that uses Retrieval-Augmented Generation (RAG) and Abstract Syntax Trees (AST) to provide deep insights into code submissions. It analyzes code to calculate complexity, retrieve similar problems from a vector database, and offer intelligent feedback beyond simple pass/fail checks.
 
