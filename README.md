@@ -26,7 +26,7 @@ AST Parsing: Python's built-in ast module
 
 
 
-Project deployed at streamlit at https://intelligent-code-evaluator-git-6dgrkqmljukg3ti5t2h9w5.streamlit.app for demo.
+Project deployed via streamlit at https://intelligent-code-evaluator-git-6dgrkqmljukg3ti5t2h9w5.streamlit.app for demo.
 
 Contributing
 Contributions are welcome. Please fork the repository, create a feature branch, and open a pull request with your changes.
