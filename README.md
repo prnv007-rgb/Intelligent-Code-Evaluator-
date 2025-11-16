@@ -50,14 +50,31 @@ Interactive UI to:
 
 ## 🏗️ Architecture Diagram
 
-```
-User Code → AST Parser → Complexity Estimator
-         ↓
-     Piston API — executes code with test cases
-         ↓
-Embedding Model → Similarity Search → RAG Output
-         ↓
-Final Evaluation → Streamlit UI
+```mermaid
+graph LR
+    A[User Code<br/>Submission] --> B[AST Parser]
+    B --> C[Complexity<br/>Analysis]
+    
+    A --> D[Piston API]
+    D --> E[Test<br/>Execution]
+    E --> F[Results]
+    
+    A --> G[Embedding<br/>Model]
+    G --> H[Similarity<br/>Search]
+    H --> I[Retrieve<br/>Problems]
+    
+    C --> J[Final Evaluation]
+    F --> J
+    I --> J
+    
+    J --> K[Output:<br/>Feedback + Complexity<br/>+ Similar Problems]
+    
+    style A fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
+    style K fill:#7CB342,stroke:#558B2F,stroke-width:3px,color:#fff
+    style C fill:#FDD835,stroke:#F9A825,stroke-width:2px
+    style F fill:#FF7043,stroke:#E64A19,stroke-width:2px
+    style H fill:#AB47BC,stroke:#7B1FA2,stroke-width:2px
+    style J fill:#26A69A,stroke:#00796B,stroke-width:3px,color:#fff
 ```
 
 ---
@@ -147,7 +164,7 @@ def two_sum(nums, target):
 ```
 
 ### Output:
-- **Execution**: ✅ Passed all test cases
+- **Execution**:  Passed all test cases
 - **Complexity**: O(n²) time, O(1) space
 - **Similar Problem**: Two Sum (Hash Map approach)
 - **Optimal Complexity**: O(n) time, O(n) space
@@ -190,7 +207,5 @@ Contributions are welcome!
 
 
 
-
----
 
 ⭐ **If you find this project helpful, please give it a star!** ⭐
